@@ -1,4 +1,5 @@
 param(
+    [string] $PythonPath = 'python',
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]] $DaemonArgs
 )
@@ -9,4 +10,4 @@ $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
 $Root = Split-Path -Parent $PSScriptRoot
 $env:PYTHONPATH = Join-Path $Root 'src'
-python -m thunderobot_thermal.daemon @DaemonArgs
+& $PythonPath -m thunderobot_thermal.daemon @DaemonArgs

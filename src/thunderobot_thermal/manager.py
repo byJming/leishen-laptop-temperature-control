@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -73,6 +74,21 @@ def python_console_executable() -> str:
         if candidate.exists():
             return str(candidate)
     return str(executable)
+
+
+def powershell_executable() -> str:
+    discovered = shutil.which("pwsh.exe")
+    if discovered:
+        return discovered
+
+    candidates = (
+        Path(r"C:\Program Files\PowerShell\7\pwsh.exe"),
+        Path(r"C:\Program Files (x86)\PowerShell\7\pwsh.exe"),
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return "pwsh.exe"
 
 
 def daemon_processes() -> list[psutil.Process]:
@@ -220,6 +236,10 @@ def install_scheduled_task(config: RuntimeConfig) -> None:
             config.profile,
             "-Interval",
             str(config.interval),
+            "-PowerShellPath",
+            powershell_executable(),
+            "-PythonPath",
+            python_console_executable(),
         ],
         cwd=PROJECT_ROOT,
         capture_output=True,

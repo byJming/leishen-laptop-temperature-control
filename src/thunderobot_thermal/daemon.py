@@ -9,6 +9,7 @@ import psutil
 
 from .fan_strategy import FanCommand, ThermalPolicy
 from .leishen_smi import LeishenSmiClient, activate_windows_power_plan
+from .power_state import EffectiveRuntimeSettings, effective_runtime_settings, is_ac_power_connected
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -43,9 +44,10 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     client = LeishenSmiClient()
-    policy = ThermalPolicy.from_name(args.profile)
     stopped = False
     previous: FanCommand | None = None
+    active_settings: EffectiveRuntimeSettings | None = None
+    policy: ThermalPolicy | None = None
 
     def stop(_signum: int, _frame: object) -> None:
         nonlocal stopped
@@ -54,21 +56,34 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
 
-    client.set_power_mode(args.mode)
     client.set_fan_control_enabled(True)
-    if not args.no_powercfg:
-        activate_windows_power_plan(args.mode)
 
     try:
         while not stopped:
+            settings = effective_runtime_settings(
+                configured_mode=args.mode,
+                configured_profile=args.profile,
+                on_ac_power=is_ac_power_connected(),
+            )
+            if settings != active_settings:
+                client.set_power_mode(settings.mode)
+                if not args.no_powercfg:
+                    activate_windows_power_plan(settings.mode)
+                policy = ThermalPolicy.from_name(settings.profile)
+                active_settings = settings
+
             snapshot = client.read_sensors()
+            if policy is None:
+                policy = ThermalPolicy.from_name(args.profile)
             target = policy.target_for(snapshot, manual_full=args.manual_full)
             command = policy.next_command(previous, target)
             client.set_fans(command)
             previous = command
 
             print(
-                "CPU {0}C/{1}RPM GPU {2}C/{3}RPM SYS {4}C/{5}RPM -> fan {6}/{7}/{8}%".format(
+                "{0}/{1} CPU {2}C/{3}RPM GPU {4}C/{5}RPM SYS {6}C/{7}RPM -> fan {8}/{9}/{10}%".format(
+                    active_settings.mode if active_settings else args.mode,
+                    active_settings.profile if active_settings else args.profile,
                     snapshot.cpu_temp,
                     snapshot.cpu_fan_rpm,
                     snapshot.gpu_temp,
