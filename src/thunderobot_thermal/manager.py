@@ -149,6 +149,8 @@ def start_daemon(config: RuntimeConfig) -> None:
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(PROJECT_ROOT / "src")
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
     log = LOG_PATH.open("a", encoding="utf-8")
     subprocess.Popen(
         command,
@@ -185,6 +187,8 @@ def stop_daemon(release: bool = True) -> None:
 def release_fan_control_once() -> None:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(PROJECT_ROOT / "src")
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
     code = (
         "from thunderobot_thermal.leishen_smi import LeishenSmiClient;"
         "LeishenSmiClient().release_fan_control()"

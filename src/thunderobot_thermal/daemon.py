@@ -7,7 +7,8 @@ import time
 
 import psutil
 
-from .fan_strategy import FanCommand, ThermalPolicy
+from .fan_strategy import FanCommand, SensorSnapshot, ThermalPolicy
+from .hotkey import DEFAULT_HOTKEY_TEXT, GlobalHotkeyListener, ManualFullHotkeyState
 from .leishen_smi import LeishenSmiClient, activate_windows_power_plan
 from .power_state import EffectiveRuntimeSettings, effective_runtime_settings, is_ac_power_connected
 
@@ -25,6 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--manual-full", action="store_true", help="强制三风扇满转")
     parser.add_argument("--once", action="store_true", help="只执行一次控制循环")
     parser.add_argument("--no-powercfg", action="store_true", help="不切换 Windows 电源计划")
+    parser.add_argument("--no-hotkey", action="store_true", help="不注册全局满转快捷键")
     parser.add_argument("--allow-controlcenter", action="store_true", help="允许和原厂控制中心同时运行")
     parser.add_argument("--release-on-exit", action="store_true", help="退出时把风扇控制权交还给固件默认策略")
     return parser
@@ -48,6 +50,8 @@ def main(argv: list[str] | None = None) -> int:
     previous: FanCommand | None = None
     active_settings: EffectiveRuntimeSettings | None = None
     policy: ThermalPolicy | None = None
+    manual_full_state = ManualFullHotkeyState(enabled=args.manual_full)
+    hotkey_listener: GlobalHotkeyListener | None = None
 
     def stop(_signum: int, _frame: object) -> None:
         nonlocal stopped
@@ -55,6 +59,14 @@ def main(argv: list[str] | None = None) -> int:
 
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
+
+    if not args.no_hotkey and not args.once:
+        hotkey_listener = GlobalHotkeyListener(manual_full_state)
+        hotkey_listener.start()
+        if hotkey_listener.error:
+            print(f"{DEFAULT_HOTKEY_TEXT} 注册失败：{hotkey_listener.error}", file=sys.stderr, flush=True)
+        else:
+            print(f"{DEFAULT_HOTKEY_TEXT} 已注册：按一次开启满转，再按一次恢复策略。", flush=True)
 
     client.set_fan_control_enabled(True)
 
@@ -75,15 +87,16 @@ def main(argv: list[str] | None = None) -> int:
             snapshot = client.read_sensors()
             if policy is None:
                 policy = ThermalPolicy.from_name(args.profile)
-            target = policy.target_for(snapshot, manual_full=args.manual_full)
-            command = policy.next_command(previous, target)
+            manual_full = manual_full_state.is_enabled()
+            command = select_command(policy, previous, snapshot, manual_full)
             client.set_fans(command)
             previous = command
 
             print(
-                "{0}/{1} CPU {2}C/{3}RPM GPU {4}C/{5}RPM SYS {6}C/{7}RPM -> fan {8}/{9}/{10}%".format(
+                "{0}/{1}{2} CPU {3}C/{4}RPM GPU {5}C/{6}RPM SYS {7}C/{8}RPM -> fan {9}/{10}/{11}%".format(
                     active_settings.mode if active_settings else args.mode,
                     active_settings.profile if active_settings else args.profile,
+                    " manual-full" if manual_full else "",
                     snapshot.cpu_temp,
                     snapshot.cpu_fan_rpm,
                     snapshot.gpu_temp,
@@ -101,6 +114,8 @@ def main(argv: list[str] | None = None) -> int:
                 break
             time.sleep(args.interval)
     finally:
+        if hotkey_listener is not None:
+            hotkey_listener.stop()
         if args.release_on_exit:
             client.release_fan_control()
 
@@ -117,6 +132,18 @@ def find_control_center_processes() -> list[str]:
         if name.lower() in {"controlcenter.exe", "controlcenterdaemon.exe"}:
             names.append(f"{name}:{process.info.get('pid')}")
     return names
+
+
+def select_command(
+    policy: ThermalPolicy,
+    previous: FanCommand | None,
+    snapshot: SensorSnapshot,
+    manual_full: bool,
+) -> FanCommand:
+    target = policy.target_for(snapshot, manual_full=manual_full)
+    if manual_full or target == FanCommand(policy.max_speed, policy.max_speed, policy.max_speed):
+        return target
+    return policy.next_command(previous, target)
 
 
 if __name__ == "__main__":
