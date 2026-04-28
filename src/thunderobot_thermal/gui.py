@@ -30,8 +30,8 @@ class ThermalControlApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("雷神温控")
-        self.geometry("820x620")
-        self.minsize(820, 620)
+        self.geometry("840x660")
+        self.minsize(840, 660)
         self.resizable(False, False)
         self.configure(bg="#101216")
 
@@ -89,9 +89,9 @@ class ThermalControlApp(tk.Tk):
         self.conflict_label.pack(anchor="w", pady=(8, 0))
 
         self.controls_panel = self._panel()
-        self.controls_panel.pack(fill="both", expand=True, pady=(16, 0))
+        self.controls_panel.pack(fill="x", pady=(16, 0))
         self.controls_panel.pack_propagate(False)
-        self.controls_panel.configure(height=300)
+        self.controls_panel.configure(height=260)
 
         top = tk.Frame(self.controls_panel, bg="#1a1f26")
         top.pack(fill="x")
@@ -118,7 +118,7 @@ class ThermalControlApp(tk.Tk):
         self.profile_buttons = self._segmented(profile_box, PROFILE_LABELS, self.set_profile)
 
         bottom = tk.Frame(self.main, bg="#101216")
-        bottom.pack(fill="x", pady=(4, 0))
+        bottom.pack(fill="x", pady=(14, 0))
         self.apply_button = self._button(bottom, "应用当前设置", self.apply_settings, accent=True)
         self.apply_button.pack(side="left")
         self.refresh_button = self._button(bottom, "刷新状态", self.refresh_status)
