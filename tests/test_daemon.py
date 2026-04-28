@@ -35,11 +35,23 @@ class SelectCommandTests(unittest.TestCase):
         command = select_command(
             policy,
             previous=FanCommand(30, 30, 30),
-            snapshot=SensorSnapshot(cpu_temp=88, gpu_temp=40, sys_temp=40),
+            snapshot=SensorSnapshot(cpu_temp=75, gpu_temp=40, sys_temp=40),
             manual_full=False,
         )
 
-        self.assertEqual(command, FanCommand(50, 50, 50))
+        self.assertEqual(command, FanCommand(55, 55, 55))
+
+    def test_high_temperature_target_bypasses_ramp_limit(self) -> None:
+        policy = ThermalPolicy.aggressive()
+
+        command = select_command(
+            policy,
+            previous=FanCommand(30, 30, 30),
+            snapshot=SensorSnapshot(cpu_temp=84, gpu_temp=40, sys_temp=40),
+            manual_full=False,
+        )
+
+        self.assertEqual(command, FanCommand(95, 87, 95))
 
 
 if __name__ == "__main__":

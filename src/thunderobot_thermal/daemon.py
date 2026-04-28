@@ -149,7 +149,11 @@ def select_command(
     manual_full: bool,
 ) -> FanCommand:
     target = policy.target_for(snapshot, manual_full=manual_full)
-    if manual_full or target == FanCommand(policy.max_speed, policy.max_speed, policy.max_speed):
+    if (
+        manual_full
+        or target == FanCommand(policy.max_speed, policy.max_speed, policy.max_speed)
+        or max(target.cpu, target.gpu, target.sys) >= 95
+    ):
         return target
     return policy.next_command(previous, target)
 

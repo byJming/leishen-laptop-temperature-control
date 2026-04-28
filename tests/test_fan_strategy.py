@@ -22,8 +22,16 @@ class ThermalPolicyTests(unittest.TestCase):
 
         command = policy.target_for(SensorSnapshot(cpu_temp=92, gpu_temp=70, sys_temp=60))
 
-        self.assertEqual(command.cpu, 100)
-        self.assertEqual(command.sys, 100)
+        self.assertEqual(command, FanCommand(100, 100, 100))
+
+    def test_aggressive_policy_moves_high_temperature_response_earlier(self) -> None:
+        policy = ThermalPolicy.aggressive()
+
+        command = policy.target_for(SensorSnapshot(cpu_temp=84, gpu_temp=40, sys_temp=40))
+
+        self.assertGreaterEqual(command.cpu, 95)
+        self.assertGreaterEqual(command.gpu, 87)
+        self.assertGreaterEqual(command.sys, 95)
 
     def test_emergency_forces_full_speed(self) -> None:
         policy = ThermalPolicy.aggressive()
@@ -53,16 +61,16 @@ class ThermalPolicyTests(unittest.TestCase):
 
         command = policy.target_for(SensorSnapshot(cpu_temp=88, gpu_temp=49, sys_temp=45))
 
-        self.assertGreaterEqual(command.cpu, 95)
-        self.assertGreaterEqual(command.gpu, 85)
-        self.assertGreaterEqual(command.sys, 95)
+        self.assertEqual(command.cpu, 100)
+        self.assertGreaterEqual(command.gpu, 92)
+        self.assertEqual(command.sys, 100)
 
     def test_ramp_increases_quickly_and_decreases_slowly(self) -> None:
         policy = ThermalPolicy.aggressive()
 
         self.assertEqual(
             policy.next_command(FanCommand(40, 40, 40), FanCommand(90, 70, 50)),
-            FanCommand(60, 60, 50),
+            FanCommand(65, 65, 50),
         )
         self.assertEqual(
             policy.next_command(FanCommand(80, 80, 80), FanCommand(40, 40, 40)),

@@ -73,10 +73,10 @@ class ThermalPolicy:
                 (45, 35),
                 (55, 40),
                 (65, 55),
-                (75, 72),
-                (82, 85),
-                (88, 95),
-                (92, 100),
+                (72, 72),
+                (78, 85),
+                (84, 95),
+                (88, 100),
             )
         )
         sys_curve = FanCurve(
@@ -88,7 +88,14 @@ class ThermalPolicy:
                 (78, 100),
             )
         )
-        return ThermalPolicy(cpu_curve=main_curve, gpu_curve=main_curve, sys_curve=sys_curve)
+        return ThermalPolicy(
+            cpu_curve=main_curve,
+            gpu_curve=main_curve,
+            sys_curve=sys_curve,
+            emergency_cpu_temp=92,
+            up_step=25,
+            cross_cooling_offset=8,
+        )
 
     @staticmethod
     def balanced() -> "ThermalPolicy":
