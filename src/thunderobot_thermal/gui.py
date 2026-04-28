@@ -19,6 +19,7 @@ from .manager import (
     stop_daemon,
     uninstall_scheduled_task,
 )
+from .power_state import effective_runtime_settings, is_ac_power_connected
 
 
 MODE_LABELS = {"high": "高性能", "game": "游戏", "office": "办公"}
@@ -82,6 +83,8 @@ class ThermalControlApp(tk.Tk):
         self.status_label.pack(anchor="w")
         self.sensor_label = self._label(self.status_panel, "传感器：等待刷新", size=11)
         self.sensor_label.pack(anchor="w", pady=(14, 0))
+        self.effective_label = self._label(self.status_panel, "当前策略：等待检测", size=10, color="#d7dde6")
+        self.effective_label.pack(anchor="w", pady=(8, 0))
         self.conflict_label = self._label(self.status_panel, "", size=10, color="#9aa5b4")
         self.conflict_label.pack(anchor="w", pady=(8, 0))
 
@@ -106,12 +109,12 @@ class ThermalControlApp(tk.Tk):
 
         mode_box = tk.Frame(sections, bg="#1a1f26")
         mode_box.pack(side="left", fill="x", expand=True)
-        self._label(mode_box, "性能模式", size=10, color="#9aa5b4").pack(anchor="w", pady=(0, 8))
+        self._label(mode_box, "插电性能偏好", size=10, color="#9aa5b4").pack(anchor="w", pady=(0, 8))
         self.mode_buttons = self._segmented(mode_box, MODE_LABELS, self.set_mode)
 
         profile_box = tk.Frame(sections, bg="#1a1f26")
         profile_box.pack(side="left", fill="x", expand=True, padx=(24, 0))
-        self._label(profile_box, "温控策略", size=10, color="#9aa5b4").pack(anchor="w", pady=(0, 8))
+        self._label(profile_box, "插电温控偏好", size=10, color="#9aa5b4").pack(anchor="w", pady=(0, 8))
         self.profile_buttons = self._segmented(profile_box, PROFILE_LABELS, self.set_profile)
 
         bottom = tk.Frame(self.main, bg="#101216")
@@ -277,11 +280,12 @@ class ThermalControlApp(tk.Tk):
             startup = scheduled_task_exists()
             conflicts = control_center_processes()
             elevated = is_elevated()
-            self.after(0, lambda: self._apply_status(running, startup, conflicts, elevated))
+            on_ac_power = is_ac_power_connected()
+            self.after(0, lambda: self._apply_status(running, startup, conflicts, elevated, on_ac_power))
         finally:
             self.after(0, lambda: setattr(self, "status_refreshing", False))
 
-    def _apply_status(self, running: bool, startup: bool, conflicts: list[str], elevated: bool) -> None:
+    def _apply_status(self, running: bool, startup: bool, conflicts: list[str], elevated: bool, on_ac_power: bool) -> None:
         self.is_running = running
         self.is_startup = startup
         admin_text = "管理员" if elevated else "非管理员"
@@ -291,6 +295,15 @@ class ThermalControlApp(tk.Tk):
             bg="#173d2c" if elevated else "#4a2f18",
             fg="#88f0bc" if elevated else "#ffbd73",
         )
+        effective = effective_runtime_settings(self.mode, self.profile, on_ac_power)
+        power_text = "外接电源" if effective.on_ac_power else "电池供电"
+        current_text = f"{MODE_LABELS[effective.mode]} / {PROFILE_LABELS[effective.profile]}"
+        configured_text = f"{MODE_LABELS[self.mode]} / {PROFILE_LABELS[self.profile]}"
+        if effective.on_ac_power:
+            detail = f"当前策略：{power_text}，{current_text}"
+        else:
+            detail = f"当前策略：{power_text}，{current_text}；插电后恢复 {configured_text}"
+        self.effective_label.configure(text=detail)
         self.conflict_label.configure(text="原厂控制中心：" + ("未运行" if not conflicts else "运行中，建议退出"))
         self.update_button_states()
 
