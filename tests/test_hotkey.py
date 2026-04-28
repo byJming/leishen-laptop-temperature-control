@@ -19,4 +19,4 @@ class ManualFullHotkeyStateTests(unittest.TestCase):
         self.assertTrue(state.is_enabled())
 
     def test_hotkey_text_documents_selected_shortcut(self) -> None:
-        self.assertEqual(DEFAULT_HOTKEY_TEXT, "Ctrl+Alt+Shift+F12")
+        self.assertEqual(DEFAULT_HOTKEY_TEXT, "Ctrl+Alt+Shift+0")

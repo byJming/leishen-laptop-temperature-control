@@ -11,6 +11,7 @@ from .fan_strategy import FanCommand, SensorSnapshot, ThermalPolicy
 from .hotkey import DEFAULT_HOTKEY_TEXT, GlobalHotkeyListener, ManualFullHotkeyState
 from .leishen_smi import LeishenSmiClient, activate_windows_power_plan
 from .power_state import EffectiveRuntimeSettings, effective_runtime_settings, is_ac_power_connected
+from .runtime_status import write_runtime_status
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -91,6 +92,13 @@ def main(argv: list[str] | None = None) -> int:
             command = select_command(policy, previous, snapshot, manual_full)
             client.set_fans(command)
             previous = command
+            if active_settings is not None:
+                write_runtime_status(
+                    mode=active_settings.mode,
+                    profile=active_settings.profile,
+                    manual_full=manual_full,
+                    on_ac_power=active_settings.on_ac_power,
+                )
 
             print(
                 "{0}/{1}{2} CPU {3}C/{4}RPM GPU {5}C/{6}RPM SYS {7}C/{8}RPM -> fan {9}/{10}/{11}%".format(

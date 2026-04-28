@@ -4,6 +4,7 @@ import threading
 import tkinter as tk
 from tkinter import messagebox
 
+from .hotkey import DEFAULT_HOTKEY_TEXT
 from .leishen_smi import LeishenSmiClient
 from .manager import (
     RuntimeConfig,
@@ -20,6 +21,7 @@ from .manager import (
     uninstall_scheduled_task,
 )
 from .power_state import effective_runtime_settings, is_ac_power_connected
+from .runtime_status import RuntimeStatus, read_runtime_status
 
 
 MODE_LABELS = {"high": "高性能", "game": "游戏", "office": "办公"}
@@ -42,6 +44,7 @@ class ThermalControlApp(tk.Tk):
         self.mode = self.config_data.mode
         self.profile = self.config_data.profile
         self.manual_full = self.config_data.manual_full
+        self.runtime_status: RuntimeStatus | None = None
         self.status_refreshing = False
         self.sensor_refreshing = False
         self.operation_running = False
@@ -101,6 +104,8 @@ class ThermalControlApp(tk.Tk):
         self.startup_button.pack(side="left", padx=10)
         self.full_button = self._button(top, "手动满转：关", self.toggle_manual_full)
         self.full_button.pack(side="left", padx=10)
+        self.hotkey_label = self._label(top, f"快捷键 {DEFAULT_HOTKEY_TEXT}", size=9, color="#9aa5b4")
+        self.hotkey_label.pack(side="left", padx=(2, 0), pady=(10, 0))
         self.release_button = self._button(top, "停止并交还默认", self.stop_and_release)
         self.release_button.pack(side="right")
 
@@ -186,7 +191,8 @@ class ThermalControlApp(tk.Tk):
     def update_button_states(self) -> None:
         self.run_button.configure(text="停止后台" if self.is_running else "启动后台")
         self.startup_button.configure(text="关闭自启动" if self.is_startup else "开启自启动")
-        self.full_button.configure(text="手动满转：开" if self.manual_full else "手动满转：关")
+        actual_manual_full = self.runtime_status.manual_full if self.runtime_status is not None and self.is_running else self.manual_full
+        self.full_button.configure(text="手动满转：开" if actual_manual_full else "手动满转：关")
 
         for key, button in self.mode_buttons.items():
             self._paint_segment(button, key == self.mode)
@@ -210,7 +216,8 @@ class ThermalControlApp(tk.Tk):
         self.apply_settings()
 
     def toggle_manual_full(self) -> None:
-        self.manual_full = not self.manual_full
+        actual_manual_full = self.runtime_status.manual_full if self.runtime_status is not None and self.is_running else self.manual_full
+        self.manual_full = not actual_manual_full
         self.update_button_states()
         self.apply_settings()
 
@@ -281,13 +288,23 @@ class ThermalControlApp(tk.Tk):
             conflicts = control_center_processes()
             elevated = is_elevated()
             on_ac_power = is_ac_power_connected()
-            self.after(0, lambda: self._apply_status(running, startup, conflicts, elevated, on_ac_power))
+            runtime_status = read_runtime_status() if running else None
+            self.after(0, lambda: self._apply_status(running, startup, conflicts, elevated, on_ac_power, runtime_status))
         finally:
             self.after(0, lambda: setattr(self, "status_refreshing", False))
 
-    def _apply_status(self, running: bool, startup: bool, conflicts: list[str], elevated: bool, on_ac_power: bool) -> None:
+    def _apply_status(
+        self,
+        running: bool,
+        startup: bool,
+        conflicts: list[str],
+        elevated: bool,
+        on_ac_power: bool,
+        runtime_status: RuntimeStatus | None,
+    ) -> None:
         self.is_running = running
         self.is_startup = startup
+        self.runtime_status = runtime_status
         admin_text = "管理员" if elevated else "非管理员"
         self.status_label.configure(text=f"后台：{'运行中' if running else '未运行'}    自启动：{'已开启' if startup else '未开启'}")
         self.admin_badge.configure(
@@ -295,7 +312,11 @@ class ThermalControlApp(tk.Tk):
             bg="#173d2c" if elevated else "#4a2f18",
             fg="#88f0bc" if elevated else "#ffbd73",
         )
-        effective = effective_runtime_settings(self.mode, self.profile, on_ac_power)
+        effective = (
+            effective_runtime_settings(self.mode, self.profile, on_ac_power)
+            if runtime_status is None
+            else runtime_status
+        )
         power_text = "外接电源" if effective.on_ac_power else "电池供电"
         current_text = f"{MODE_LABELS[effective.mode]} / {PROFILE_LABELS[effective.profile]}"
         configured_text = f"{MODE_LABELS[self.mode]} / {PROFILE_LABELS[self.profile]}"
@@ -303,6 +324,8 @@ class ThermalControlApp(tk.Tk):
             detail = f"当前策略：{power_text}，{current_text}"
         else:
             detail = f"当前策略：{power_text}，{current_text}；插电后恢复 {configured_text}"
+        if runtime_status is not None and runtime_status.manual_full:
+            detail += "；手动满转已开启"
         self.effective_label.configure(text=detail)
         self.conflict_label.configure(text="原厂控制中心：" + ("未运行" if not conflicts else "运行中，建议退出"))
         self.update_button_states()
